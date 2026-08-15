@@ -27,8 +27,11 @@ test("renders Steady without starter metadata", async () => {
 });
 
 test("keeps all progress in the browser and supports portable backups", async () => {
-  const [page, nextConfig, packageJson, workflow, vercel] = await Promise.all([
+  const [page, trackerData, styles, layout, nextConfig, packageJson, workflow, vercel] = await Promise.all([
     readFile(new URL("app/page.tsx", root), "utf8"),
+    readFile(new URL("app/tracker-data.ts", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+    readFile(new URL("app/layout.tsx", root), "utf8"),
     readFile(new URL("next.config.ts", root), "utf8"),
     readFile(new URL("package.json", root), "utf8"),
     readFile(new URL(".github/workflows/deploy-pages.yml", root), "utf8"),
@@ -39,7 +42,21 @@ test("keeps all progress in the browser and supports portable backups", async ()
   assert.match(page, /Export JSON/);
   assert.match(page, /Import/);
   assert.match(page, /Contribution activity over the last 12 months/);
-  assert.match(page, /Workload share/);
+  assert.match(page, /Goal calendars/);
+  assert.match(page, /logsByGoalAndDate/);
+  assert.match(page, /contribution activity over the last 12 months/);
+  assert.match(page, /P1 · Highest/);
+  assert.match(page, /P1=4, P2=3, P3=2, and P4=1/);
+  assert.match(page, /Build the habit/);
+  assert.match(page, /steady\.config/);
+  assert.match(styles, /Developer workspace theme/);
+  assert.match(styles, /--parchment:\s*#070a12/);
+  assert.match(styles, /SFMono-Regular/);
+  assert.match(layout, /themeColor:\s*"#070a12"/);
+  assert.match(layout, /colorScheme:\s*"dark"/);
+  assert.match(trackerData, /steady-consistency-tracker-v1/);
+  assert.match(trackerData, /priorityFromWorkload/);
+  assert.doesNotMatch(page, /Workload share|% workload|workload is currently allocated/);
   assert.doesNotMatch(page, /\bfetch\s*\(/);
   assert.match(nextConfig, /output:\s*["']export["']/);
   assert.match(packageJson, /"build:static":\s*"next build"/);

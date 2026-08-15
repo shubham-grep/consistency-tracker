@@ -4,9 +4,10 @@ Steady is a private, browser-only consistency tracker. It turns goal check-ins i
 
 ## What it includes
 
-- Goals with daily or weekly targets, custom units, workload weighting, and colors
-- A 12-month contribution calendar with per-day check-in details
-- Weighted weekly completion, current and longest streaks, and active-day totals
+- Goals with daily or weekly targets, custom units, P1–P4 priorities, and colors
+- A responsive, dark developer-workspace interface with accessible contrast and focus states
+- A combined 12-month contribution calendar plus one filtered calendar per goal
+- Priority-weighted weekly completion, current and longest streaks, and active-day totals
 - Automatically unlocked duration and milestone badges
 - Check-in history, notes, editing, and deletion
 - LocalStorage persistence with JSON backup and restore

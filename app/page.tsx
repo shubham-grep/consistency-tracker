@@ -9,41 +9,25 @@ import {
   useRef,
   useState,
 } from "react";
-
-type Cadence = "day" | "week";
-
-type Goal = {
-  id: string;
-  name: string;
-  target: number;
-  unit: string;
-  cadence: Cadence;
-  workload: number;
-  color: string;
-  createdAt: string;
-};
-
-type ProgressLog = {
-  id: string;
-  goalId: string;
-  date: string;
-  value: number;
-  note?: string;
-  createdAt: string;
-};
-
-type TrackerData = {
-  version: 1;
-  goals: Goal[];
-  logs: ProgressLog[];
-};
+import {
+  LEGACY_STORAGE_KEY,
+  migrateTrackerData,
+  PRIORITIES,
+  priorityWeightedPercent,
+  STORAGE_KEY,
+  type Cadence,
+  type Goal,
+  type Priority,
+  type ProgressLog,
+  type TrackerData,
+} from "./tracker-data";
 
 type GoalDraft = {
   name: string;
   target: string;
   unit: string;
   cadence: Cadence;
-  workload: string;
+  priority: Priority;
   color: string;
 };
 
@@ -56,16 +40,15 @@ type BadgeState = {
   progress: string;
 };
 
-const STORAGE_KEY = "steady-consistency-tracker-v1";
 const DAY_MS = 86_400_000;
-const GOAL_COLORS = ["#e7ad2f", "#df6c51", "#55735e", "#7786b8", "#ad7057"];
+const GOAL_COLORS = ["#58a6ff", "#3fb950", "#bc8cff", "#f2cc60", "#ff7b72"];
 
 const emptyGoal: GoalDraft = {
   name: "",
   target: "3",
   unit: "sessions",
   cadence: "week",
-  workload: "25",
+  priority: "P2",
   color: GOAL_COLORS[0],
 };
 
@@ -108,6 +91,72 @@ function formatDate(value: string, style: "short" | "long" = "long") {
   }).format(fromDateKey(value));
 }
 
+function heatLevel(count: number) {
+  return count === 0 ? 0 : count === 1 ? 1 : count === 2 ? 2 : count === 3 ? 3 : 4;
+}
+
+type ContributionCalendarProps = {
+  ariaLabel: string;
+  calendarDays: Date[];
+  logsByDate: Map<string, ProgressLog[]>;
+  monthLabels: string[];
+  onSelectDate: (date: string) => void;
+  selectedDate: string;
+  today: Date;
+};
+
+function ContributionCalendar({
+  ariaLabel,
+  calendarDays,
+  logsByDate,
+  monthLabels,
+  onSelectDate,
+  selectedDate,
+  today,
+}: ContributionCalendarProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (scroller) scroller.scrollLeft = scroller.scrollWidth;
+  }, [calendarDays, logsByDate]);
+
+  return (
+    <div className="heatmap-scroll" ref={scrollRef}>
+      <div className="heatmap-frame">
+        <div className="month-spacer" />
+        <div className="month-labels" aria-hidden="true">
+          {monthLabels.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}
+        </div>
+        <div className="weekday-labels" aria-hidden="true">
+          <span /><span>Mon</span><span /><span>Wed</span><span /><span>Fri</span><span />
+        </div>
+        <div className="heatmap" role="grid" aria-label={ariaLabel}>
+          {calendarDays.map((day) => {
+            const key = dateKey(day);
+            const count = logsByDate.get(key)?.length ?? 0;
+            const isFuture = day > today;
+            return (
+              <button
+                key={key}
+                type="button"
+                role="gridcell"
+                className={`heat-cell level-${isFuture ? 0 : heatLevel(count)}${selectedDate === key ? " is-selected" : ""}${isFuture ? " is-future" : ""}`}
+                aria-label={`${formatDate(key)}: ${count} ${count === 1 ? "check-in" : "check-ins"}`}
+                aria-selected={selectedDate === key}
+                disabled={isFuture}
+                onClick={() => onSelectDate(key)}
+              >
+                <span className="heat-tooltip">{formatDate(key, "short")} · {count || "No"} {count === 1 ? "check-in" : "check-ins"}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function makeId(prefix: string) {
   const random = typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -139,8 +188,8 @@ function createStarterData(): TrackerData {
       target: 10,
       unit: "hours",
       cadence: "week",
-      workload: 45,
-      color: "#e7ad2f",
+      priority: "P1",
+      color: "#58a6ff",
       createdAt,
     },
     {
@@ -149,8 +198,8 @@ function createStarterData(): TrackerData {
       target: 3,
       unit: "sessions",
       cadence: "week",
-      workload: 25,
-      color: "#df6c51",
+      priority: "P2",
+      color: "#ff7b72",
       createdAt,
     },
     {
@@ -159,8 +208,8 @@ function createStarterData(): TrackerData {
       target: 20,
       unit: "pages",
       cadence: "day",
-      workload: 30,
-      color: "#55735e",
+      priority: "P2",
+      color: "#3fb950",
       createdAt,
     },
   ];
@@ -191,46 +240,7 @@ function createStarterData(): TrackerData {
     if (signal === 1 || signal === 9) pushLog("goal-run", day, 1);
   }
 
-  return { version: 1, goals, logs };
-}
-
-function isTrackerData(value: unknown): value is TrackerData {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<TrackerData>;
-  if (candidate.version !== 1 || !Array.isArray(candidate.goals) || !Array.isArray(candidate.logs)) {
-    return false;
-  }
-  const validGoal = candidate.goals.every((goal) => {
-    if (!goal || typeof goal !== "object") return false;
-    const item = goal as Partial<Goal>;
-    return typeof item.id === "string"
-      && typeof item.name === "string"
-      && typeof item.target === "number"
-      && item.target > 0
-      && typeof item.unit === "string"
-      && (item.cadence === "day" || item.cadence === "week")
-      && typeof item.workload === "number"
-      && item.workload >= 0
-      && item.workload <= 100
-      && typeof item.color === "string"
-      && /^#[0-9a-f]{6}$/i.test(item.color)
-      && typeof item.createdAt === "string";
-  });
-  const goalIds = new Set(candidate.goals.map((goal) => goal.id));
-  const validLogs = candidate.logs.every((log) => {
-    if (!log || typeof log !== "object") return false;
-    const item = log as Partial<ProgressLog>;
-    return typeof item.id === "string"
-      && typeof item.goalId === "string"
-      && goalIds.has(item.goalId)
-      && typeof item.date === "string"
-      && /^\d{4}-\d{2}-\d{2}$/.test(item.date)
-      && typeof item.value === "number"
-      && item.value > 0
-      && typeof item.createdAt === "string"
-      && (item.note === undefined || typeof item.note === "string");
-  });
-  return validGoal && validLogs;
+  return { version: 2, goals, logs };
 }
 
 function activityDates(data: TrackerData) {
@@ -274,15 +284,10 @@ function getWeekProgress(data: TrackerData, today: Date) {
 
 function overallWeekPercent(data: TrackerData, today: Date) {
   const progress = getWeekProgress(data, today);
-  const weight = progress.reduce((sum, item) => sum + item.goal.workload, 0);
-  if (!progress.length) return 0;
-  if (!weight) {
-    return Math.round((progress.reduce((sum, item) => sum + Math.min(item.ratio, 1), 0) / progress.length) * 100);
-  }
-  return Math.round(progress.reduce(
-    (sum, item) => sum + Math.min(item.ratio, 1) * item.goal.workload,
-    0,
-  ) / weight * 100);
+  return priorityWeightedPercent(progress.map((item) => ({
+    ratio: item.ratio,
+    priority: item.goal.priority,
+  })));
 }
 
 function getBadges(data: TrackerData, today: Date): BadgeState[] {
@@ -342,10 +347,8 @@ function getBadges(data: TrackerData, today: Date): BadgeState[] {
 }
 
 function greeting() {
-  return "Consisteny + High Spikes = Success";  
+  return "git push";
 }
-
-<><p></p></>
 
 export default function Home() {
   const [data, setData] = useState<TrackerData | null>(null);
@@ -360,7 +363,6 @@ export default function Home() {
   const [selectedDate, setSelectedDate] = useState("");
   const [toast, setToast] = useState("");
   const importRef = useRef<HTMLInputElement>(null);
-  const heatmapScrollRef = useRef<HTMLDivElement>(null);
   const today = useMemo(() => {
     const value = new Date();
     value.setHours(12, 0, 0, 0);
@@ -369,18 +371,19 @@ export default function Home() {
   const todayKey = dateKey(today);
 
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed: unknown = JSON.parse(stored);
-        if (isTrackerData(parsed)) {
-          setData(parsed);
+    for (const key of [STORAGE_KEY, LEGACY_STORAGE_KEY]) {
+      try {
+        const stored = window.localStorage.getItem(key);
+        if (!stored) continue;
+        const migrated = migrateTrackerData(JSON.parse(stored));
+        if (migrated) {
+          setData(migrated);
           setSelectedDate(todayKey);
           return;
         }
+      } catch {
+        // A malformed local backup should not block a valid legacy backup or starter data.
       }
-    } catch {
-      // A malformed local backup should never prevent the app from opening.
     }
     const starter = createStarterData();
     setData(starter);
@@ -408,19 +411,19 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleEscape);
   }, []);
 
-  useEffect(() => {
-    const scroller = heatmapScrollRef.current;
-    if (scroller) scroller.scrollLeft = scroller.scrollWidth;
-  }, [data]);
-
   const derived = useMemo(() => {
     if (!data) return null;
     const weekProgress = getWeekProgress(data, today);
     const streaks = streakStats(data, today);
     const badges = getBadges(data, today);
-    const totalWorkload = data.goals.reduce((sum, goal) => sum + goal.workload, 0);
     const logsByDate = new Map<string, ProgressLog[]>();
-    data.logs.forEach((log) => logsByDate.set(log.date, [...(logsByDate.get(log.date) ?? []), log]));
+    const logsByGoalAndDate = new Map<string, Map<string, ProgressLog[]>>();
+    data.goals.forEach((goal) => logsByGoalAndDate.set(goal.id, new Map()));
+    data.logs.forEach((log) => {
+      logsByDate.set(log.date, [...(logsByDate.get(log.date) ?? []), log]);
+      const goalDates = logsByGoalAndDate.get(log.goalId);
+      if (goalDates) goalDates.set(log.date, [...(goalDates.get(log.date) ?? []), log]);
+    });
 
     const calendarStart = addDays(today, -today.getDay() - 52 * 7);
     const calendarDays = Array.from({ length: 371 }, (_, index) => addDays(calendarStart, index));
@@ -436,8 +439,8 @@ export default function Home() {
       weekProgress,
       streaks,
       badges,
-      totalWorkload,
       logsByDate,
+      logsByGoalAndDate,
       calendarDays,
       monthLabels,
       weeklyPercent: overallWeekPercent(data, today),
@@ -466,7 +469,7 @@ export default function Home() {
       target: String(goal.target),
       unit: goal.unit,
       cadence: goal.cadence,
-      workload: String(goal.workload),
+      priority: goal.priority,
       color: goal.color,
     });
     setGoalDialogOpen(true);
@@ -475,9 +478,8 @@ export default function Home() {
   const saveGoal = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const target = Number(goalDraft.target);
-    const workload = Number(goalDraft.workload);
-    if (!goalDraft.name.trim() || !goalDraft.unit.trim() || target <= 0 || workload < 0 || workload > 100) {
-      setToast("Check the goal name, target, unit, and workload share.");
+    if (!goalDraft.name.trim() || !goalDraft.unit.trim() || target <= 0 || !PRIORITIES.includes(goalDraft.priority)) {
+      setToast("Check the goal name, target, unit, and priority.");
       return;
     }
     if (editingGoalId) {
@@ -489,7 +491,7 @@ export default function Home() {
           target,
           unit: goalDraft.unit.trim(),
           cadence: goalDraft.cadence,
-          workload,
+          priority: goalDraft.priority,
           color: goalDraft.color,
         } : goal),
       });
@@ -503,7 +505,7 @@ export default function Home() {
           target,
           unit: goalDraft.unit.trim(),
           cadence: goalDraft.cadence,
-          workload,
+          priority: goalDraft.priority,
           color: goalDraft.color,
           createdAt: new Date().toISOString(),
         }],
@@ -569,7 +571,7 @@ export default function Home() {
   const exportData = () => {
     const backup = {
       app: "Steady",
-      schemaVersion: 1,
+      schemaVersion: 2,
       exportedAt: new Date().toISOString(),
       data,
     };
@@ -592,9 +594,10 @@ export default function Home() {
       const payload = parsed && typeof parsed === "object" && "data" in parsed
         ? (parsed as { data: unknown }).data
         : parsed;
-      if (!isTrackerData(payload)) throw new Error("invalid backup");
+      const migrated = migrateTrackerData(payload);
+      if (!migrated) throw new Error("invalid backup");
       if (!window.confirm("Replace the progress stored on this device with this backup?")) return;
-      setData(payload);
+      setData(migrated);
       setSelectedDate(todayKey);
       setToast("Backup restored successfully.");
     } catch {
@@ -615,8 +618,8 @@ export default function Home() {
       <div className="page-shell">
         <header className="topbar">
           <a className="brand" href="#top" aria-label="Steady home">
-            
-            <span>Consistency Tracker</span>
+            <span className="brand-glyph" aria-hidden="true">S_</span>
+            <span><strong>steady</strong><small>consistency_tracker</small></span>
           </a>
           <div className="top-actions">
             <span className="local-status"><i /> Saved locally</span>
@@ -642,11 +645,11 @@ export default function Home() {
 
         <section className="hero" id="top">
           <div className="hero-copy">
-            <p className="eyebrow">{greeting()} · {formatDate(todayKey, "short")}</p>
-            {/* <h1>Small steps,<br /><em>visible momentum.</em></h1> */}
-            {/* <p className="hero-subtitle">Your quiet record of showing up—one honest check-in at a time.</p> */}
+            <p className="eyebrow"><span aria-hidden="true">$</span> {greeting()} · {formatDate(todayKey, "short")}</p>
+          
+            <p className="hero-subtitle">Consistency + Planned Spiked work = SUCCESS</p>
           </div>
-  
+
         </section>
 
         <section className="metrics-strip" aria-label="Consistency summary">
@@ -656,7 +659,7 @@ export default function Home() {
           </article>
           <article className="metric">
             <strong>{derived.weeklyPercent}<span>%</span></strong>
-            <p>Weighted weekly target</p>
+            <p>Priority-weighted weekly target</p>
           </article>
        
      
@@ -676,39 +679,15 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="heatmap-scroll" ref={heatmapScrollRef}>
-              <div className="heatmap-frame">
-                <div className="month-spacer" />
-                <div className="month-labels" aria-hidden="true">
-                  {derived.monthLabels.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}
-                </div>
-                <div className="weekday-labels" aria-hidden="true">
-                  <span /><span>Mon</span><span /><span>Wed</span><span /><span>Fri</span><span />
-                </div>
-                <div className="heatmap" role="grid" aria-label="Contribution activity over the last 12 months">
-                  {derived.calendarDays.map((day) => {
-                    const key = dateKey(day);
-                    const count = derived.logsByDate.get(key)?.length ?? 0;
-                    const level = count === 0 ? 0 : count === 1 ? 1 : count === 2 ? 2 : count === 3 ? 3 : 4;
-                    const isFuture = day > today;
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        role="gridcell"
-                        className={`heat-cell level-${isFuture ? 0 : level}${selectedDate === key ? " is-selected" : ""}${isFuture ? " is-future" : ""}`}
-                        aria-label={`${formatDate(key)}: ${count} ${count === 1 ? "check-in" : "check-ins"}`}
-                        aria-selected={selectedDate === key}
-                        disabled={isFuture}
-                        onClick={() => setSelectedDate(key)}
-                      >
-                        <span className="heat-tooltip">{formatDate(key, "short")} · {count || "No"} {count === 1 ? "check-in" : "check-ins"}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
+            <ContributionCalendar
+              ariaLabel="Contribution activity over the last 12 months — all goals"
+              calendarDays={derived.calendarDays}
+              logsByDate={derived.logsByDate}
+              monthLabels={derived.monthLabels}
+              onSelectDate={setSelectedDate}
+              selectedDate={selectedDate}
+              today={today}
+            />
 
             <div className="calendar-footer">
               <p><strong>{derived.streaks.longest} days</strong> is your longest streak so far.</p>
@@ -750,8 +729,8 @@ export default function Home() {
               <span>{new Intl.DateTimeFormat("en-US", { month: "short" }).format(today)}</span>
             </div>
             <p className="section-kicker">Today’s check-in</p>
-            <h2>Keep the promise.</h2>
-            <p className="today-intro">A small mark is enough. Choose a goal and record what actually happened.</p>
+           
+           
             <div className="today-progress">
               <span>{todayGoalIds.size} of {data.goals.length} goals touched today</span>
               <div><i style={{ width: `${data.goals.length ? Math.min(todayGoalIds.size / data.goals.length * 100, 100) : 0}%` }} /></div>
@@ -779,7 +758,7 @@ export default function Home() {
               <div>
                 <p className="section-kicker">The week at a glance</p>
                 <h2>Active goals</h2>
-                <p>{derived.totalWorkload}% of your workload is currently allocated.</p>
+                <p>Weekly score weights priorities P1–P4 as 4–1.</p>
               </div>
               <button className="button button-small" type="button" onClick={openNewGoal}>Add another</button>
             </div>
@@ -788,7 +767,7 @@ export default function Home() {
                 <div className="goal-row" key={goal.id} style={{ "--goal-color": goal.color } as CSSProperties}>
                   <button className="goal-name" type="button" onClick={() => openEditGoal(goal)} aria-label={`Edit ${goal.name}`}>
                     <span className="goal-dot" />
-                    <span><strong>{goal.name}</strong><small>{goal.target} {goal.unit} / {goal.cadence} · {goal.workload}% workload</small></span>
+                    <span><strong>{goal.name}</strong><small>{goal.target} {goal.unit} / {goal.cadence} · {goal.priority} priority</small></span>
                   </button>
                   <div className="goal-progress">
                     <div className="goal-progress-copy"><span>{Math.round(Math.min(ratio, 1) * 100)}% of target</span><span>{formatNumber(Math.max(target - value, 0))} {goal.unit} left</span></div>
@@ -827,13 +806,62 @@ export default function Home() {
           </article>
         </section>
 
-        <footer className="footer">
+        {data.goals.length > 0 && (
+          <section className="goal-calendars-section" aria-labelledby="goal-calendars-title">
+            <div className="section-heading goal-calendars-heading">
+              <div>
+                <p className="section-kicker">One rhythm at a time</p>
+                <h2 id="goal-calendars-title">Goal calendars</h2>
+                <p>Each calendar filters the same contribution history to one goal.</p>
+              </div>
+            </div>
+            <div className="goal-calendar-list">
+              {data.goals.map((goal) => {
+                const goalLogsByDate = derived.logsByGoalAndDate.get(goal.id) ?? new Map<string, ProgressLog[]>();
+                return (
+                  <article className="card goal-calendar-card" key={goal.id} style={{ "--goal-color": goal.color } as CSSProperties}>
+                    <div className="goal-calendar-header">
+                      <div>
+                        <span className="goal-dot" />
+                        <div>
+                          <h3>{goal.name}</h3>
+                          <p>{goal.priority} · {goal.target} {goal.unit} per {goal.cadence}</p>
+                        </div>
+                      </div>
+                      <div className="calendar-total">
+                        <strong>{goalLogsByDate.size}</strong>
+                        <span>active days</span>
+                      </div>
+                    </div>
+                    <ContributionCalendar
+                      ariaLabel={`${goal.name} contribution activity over the last 12 months`}
+                      calendarDays={derived.calendarDays}
+                      logsByDate={goalLogsByDate}
+                      monthLabels={derived.monthLabels}
+                      onSelectDate={setSelectedDate}
+                      selectedDate={selectedDate}
+                      today={today}
+                    />
+                    <div className="calendar-footer goal-calendar-footer">
+                      <p>Showing check-ins for <strong>{goal.name}</strong> only.</p>
+                      <div className="legend" aria-label={`${goal.name} contribution intensity from less to more`}>
+                        <span>Less</span><i className="level-0" /><i className="level-1" /><i className="level-2" /><i className="level-3" /><i className="level-4" /><span>More</span>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* <footer className="footer">
           <div><span className="brand-mark small" aria-hidden="true"><span /></span><strong>Steady</strong> · Built for consistency, not perfection.</div>
           <div className="footer-actions">
             <button type="button" onClick={() => importRef.current?.click()}>Import backup</button>
             <button type="button" onClick={exportData}>Export JSON</button>
           </div>
-        </footer>
+        </footer> */}
       </div>
 
       {goalDialogOpen && (
@@ -850,10 +878,10 @@ export default function Home() {
                 <label className="field"><span>Target</span><input required type="number" min="0.1" step="0.1" value={goalDraft.target} onChange={(event) => setGoalDraft({ ...goalDraft, target: event.target.value })} /></label>
                 <label className="field"><span>Unit</span><input required list="unit-options" value={goalDraft.unit} onChange={(event) => setGoalDraft({ ...goalDraft, unit: event.target.value })} /><datalist id="unit-options"><option value="sessions" /><option value="hours" /><option value="minutes" /><option value="pages" /><option value="reps" /><option value="percent" /></datalist></label>
                 <label className="field"><span>Cadence</span><select value={goalDraft.cadence} onChange={(event) => setGoalDraft({ ...goalDraft, cadence: event.target.value as Cadence })}><option value="week">Per week</option><option value="day">Per day</option></select></label>
-                <label className="field"><span>Workload share</span><div className="input-suffix"><input required type="number" min="0" max="100" step="1" value={goalDraft.workload} onChange={(event) => setGoalDraft({ ...goalDraft, workload: event.target.value })} /><span>%</span></div></label>
+                <label className="field"><span>Priority</span><select required value={goalDraft.priority} onChange={(event) => setGoalDraft({ ...goalDraft, priority: event.target.value as Priority })}><option value="P1">P1 · Highest</option><option value="P2">P2 · High</option><option value="P3">P3 · Medium</option><option value="P4">P4 · Low</option></select></label>
               </div>
               <fieldset className="color-field"><legend>Goal color</legend><div>{GOAL_COLORS.map((color) => <button key={color} type="button" aria-label={`Use color ${color}`} aria-pressed={goalDraft.color === color} style={{ backgroundColor: color }} onClick={() => setGoalDraft({ ...goalDraft, color })} />)}<input type="color" value={goalDraft.color} onChange={(event) => setGoalDraft({ ...goalDraft, color: event.target.value })} aria-label="Choose a custom goal color" /></div></fieldset>
-              <p className="form-help">Workload share controls how much this goal influences your weekly score. Shares do not have to total 100%.</p>
+              <p className="form-help">Priority controls this goal’s influence on the weekly score: P1=4, P2=3, P3=2, and P4=1.</p>
               <div className="modal-actions">
                 {editingGoalId && <button className="button button-danger" type="button" onClick={deleteGoal}>Delete goal</button>}
                 <span />
