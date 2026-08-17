@@ -62,6 +62,8 @@ test("keeps all progress in the browser and supports portable backups", async ()
   assert.match(styles, /overscroll-behavior-inline:\s*contain/);
   assert.match(styles, /touch-action:\s*pan-x/);
   assert.match(styles, /max-height:\s*calc\(100dvh - 12px\)/);
+  assert.match(styles, /\.today-card\s*\{\s*display:\s*none;/);
+  assert.match(styles, /@media \(min-width: 1180px\)[\s\S]*\.today-card\s*\{\s*display:\s*block;/);
   assert.doesNotMatch(styles, /@media \(max-width:/);
   assert.match(layout, /themeColor:\s*"#070a12"/);
   assert.match(layout, /colorScheme:\s*"dark"/);

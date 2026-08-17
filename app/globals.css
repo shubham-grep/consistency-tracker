@@ -2170,6 +2170,7 @@ body {
 }
 
 .today-card {
+  display: none;
   min-height: 0;
 }
 
@@ -2541,6 +2542,10 @@ body {
 
   .dashboard-grid {
     grid-template-columns: minmax(0, 2.15fr) minmax(340px, 0.85fr);
+  }
+
+  .today-card {
+    display: block;
   }
 
   .lower-grid {
