@@ -122,35 +122,38 @@ function ContributionCalendar({
   }, [calendarDays, logsByDate]);
 
   return (
-    <div className="heatmap-scroll" ref={scrollRef}>
-      <div className="heatmap-frame">
-        <div className="month-spacer" />
-        <div className="month-labels" aria-hidden="true">
-          {monthLabels.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}
-        </div>
-        <div className="weekday-labels" aria-hidden="true">
-          <span /><span>Mon</span><span /><span>Wed</span><span /><span>Fri</span><span />
-        </div>
-        <div className="heatmap" role="grid" aria-label={ariaLabel}>
-          {calendarDays.map((day) => {
-            const key = dateKey(day);
-            const count = logsByDate.get(key)?.length ?? 0;
-            const isFuture = day > today;
-            return (
-              <button
-                key={key}
-                type="button"
-                role="gridcell"
-                className={`heat-cell level-${isFuture ? 0 : heatLevel(count)}${selectedDate === key ? " is-selected" : ""}${isFuture ? " is-future" : ""}`}
-                aria-label={`${formatDate(key)}: ${count} ${count === 1 ? "check-in" : "check-ins"}`}
-                aria-selected={selectedDate === key}
-                disabled={isFuture}
-                onClick={() => onSelectDate(key)}
-              >
-                <span className="heat-tooltip">{formatDate(key, "short")} · {count || "No"} {count === 1 ? "check-in" : "check-ins"}</span>
-              </button>
-            );
-          })}
+    <div className="calendar-viewport">
+      <span className="calendar-swipe-hint" aria-hidden="true">Swipe horizontally for earlier weeks →</span>
+      <div className="heatmap-scroll" ref={scrollRef} role="region" aria-label={`${ariaLabel}. Horizontally scrollable calendar.`}>
+        <div className="heatmap-frame">
+          <div className="month-spacer" />
+          <div className="month-labels" aria-hidden="true">
+            {monthLabels.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}
+          </div>
+          <div className="weekday-labels" aria-hidden="true">
+            <span /><span>Mon</span><span /><span>Wed</span><span /><span>Fri</span><span />
+          </div>
+          <div className="heatmap" role="grid" aria-label={ariaLabel}>
+            {calendarDays.map((day) => {
+              const key = dateKey(day);
+              const count = logsByDate.get(key)?.length ?? 0;
+              const isFuture = day > today;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  role="gridcell"
+                  className={`heat-cell level-${isFuture ? 0 : heatLevel(count)}${selectedDate === key ? " is-selected" : ""}${isFuture ? " is-future" : ""}`}
+                  aria-label={`${formatDate(key)}: ${count} ${count === 1 ? "check-in" : "check-ins"}`}
+                  aria-selected={selectedDate === key}
+                  disabled={isFuture}
+                  onClick={() => onSelectDate(key)}
+                >
+                  <span className="heat-tooltip">{formatDate(key, "short")} · {count || "No"} {count === 1 ? "check-in" : "check-ins"}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
@@ -632,9 +635,9 @@ export default function Home() {
               aria-label="Import Steady JSON backup"
             />
             <button className="button button-quiet" type="button" onClick={() => importRef.current?.click()}>
-              Import
+              Import JSON
             </button>
-            <button className="button button-quiet hide-mobile" type="button" onClick={exportData}>
+            <button className="button button-quiet" type="button" onClick={exportData}>
               Export JSON
             </button>
             <button className="button button-primary" type="button" onClick={openNewGoal}>
