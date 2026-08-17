@@ -646,24 +646,17 @@ export default function Home() {
           </div>
         </header>
 
-        <section className="hero" id="top">
-          <div className="hero-copy">
-            <p className="eyebrow"><span aria-hidden="true">$</span> {greeting()} · {formatDate(todayKey, "short")}</p>
+        {/* <section className="hero" id="top"> */}
+          {/* <div className="hero-copy">
+            <p className="eyebrow"><span aria-hidden="true">$</span>  {formatDate(todayKey, "short")}</p>
           
-            <p className="hero-subtitle">Consistency + Planned Spiked work = SUCCESS</p>
-          </div>
+            
+          </div> */}
 
-        </section>
+        {/* </section> */}
 
         <section className="metrics-strip" aria-label="Consistency summary">
-          <article className="metric">
-            <strong>{derived.streaks.current} <span>day</span></strong>
-            <p>Current streak</p>
-          </article>
-          <article className="metric">
-            <strong>{derived.weeklyPercent}<span>%</span></strong>
-            <p>Priority-weighted weekly target</p>
-          </article>
+        
        
      
         </section>
@@ -756,57 +749,9 @@ export default function Home() {
         </section>
 
         <section className="lower-grid">
-          <article className="card goals-card">
-            <div className="section-heading compact">
-              <div>
-                <p className="section-kicker">The week at a glance</p>
-                <h2>Active goals</h2>
-                <p>Weekly score weights priorities P1–P4 as 4–1.</p>
-              </div>
-              <button className="button button-small" type="button" onClick={openNewGoal}>Add another</button>
-            </div>
-            <div className="goal-list">
-              {derived.weekProgress.map(({ goal, value, target, ratio }) => (
-                <div className="goal-row" key={goal.id} style={{ "--goal-color": goal.color } as CSSProperties}>
-                  <button className="goal-name" type="button" onClick={() => openEditGoal(goal)} aria-label={`Edit ${goal.name}`}>
-                    <span className="goal-dot" />
-                    <span><strong>{goal.name}</strong><small>{goal.target} {goal.unit} / {goal.cadence} · {goal.priority} priority</small></span>
-                  </button>
-                  <div className="goal-progress">
-                    <div className="goal-progress-copy"><span>{Math.round(Math.min(ratio, 1) * 100)}% of target</span><span>{formatNumber(Math.max(target - value, 0))} {goal.unit} left</span></div>
-                    <div className="progress-track"><i style={{ width: `${Math.min(ratio * 100, 100)}%` }} /></div>
-                  </div>
-                  <strong className="goal-value">{formatNumber(value)}<span> / {formatNumber(target)} {goal.unit}</span></strong>
-                  <button className="goal-log" type="button" onClick={() => openLog(goal)}>＋ <span>Log</span></button>
-                </div>
-              ))}
-              {!data.goals.length && (
-                <div className="empty-state">
-                  <h3>Your first goal starts here.</h3>
-                  <p>Choose a measurable rhythm, then make it visible.</p>
-                  <button className="button button-primary" type="button" onClick={openNewGoal}>Add a goal</button>
-                </div>
-              )}
-            </div>
-          </article>
+         
 
-          <article className="card badges-card">
-            <div className="section-heading compact">
-              <div>
-                <p className="section-kicker">Earned by showing up</p>
-                <h2>Milestones</h2>
-                <p>{unlockedCount} of {derived.badges.length} badges unlocked.</p>
-              </div>
-            </div>
-            <div className="badge-grid">
-              {derived.badges.map((badge) => (
-                <div className={`badge${badge.unlocked ? " is-unlocked" : " is-locked"}`} key={badge.id}>
-                  <span className="badge-mark" aria-hidden="true">{badge.unlocked ? badge.mark : "·"}</span>
-                  <div><strong>{badge.name}</strong><p>{badge.description}</p><small>{badge.unlocked ? "Unlocked" : badge.progress}</small></div>
-                </div>
-              ))}
-            </div>
-          </article>
+         
         </section>
 
         {data.goals.length > 0 && (
